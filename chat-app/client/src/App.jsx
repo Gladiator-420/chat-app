@@ -5,7 +5,7 @@ import { auth, db } from './firebase';
 import Login from './Login';
 import Signup from './Signup';
 import ChatRoom from './ChatRoom';
-import LoadingScreen from './Loadingscreen';
+import LoadingScreen from './LoadingScreen';
 
 export default function App() {
   const [authPage, setAuthPage] = useState('login');
