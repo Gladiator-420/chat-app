@@ -1,6 +1,12 @@
 import { io } from 'socket.io-client';
 
+// 🔥 Replace with your actual Render backend URL
+const URL = 'https://chat-app-7xii.onrender.com';
+
 // Single shared socket instance for the whole app
-const socket = io('http://localhost:3001', { autoConnect: false });
+const socket = io(URL, {
+  autoConnect: false,
+  transports: ['websocket'], // ensures stable connection
+});
 
 export default socket;
