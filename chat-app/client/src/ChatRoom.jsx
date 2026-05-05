@@ -664,7 +664,7 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
                 <div>
                   <div style={{ fontWeight:800, fontSize:17, letterSpacing:'-0.5px', fontFamily:"'Syne',sans-serif", background:'linear-gradient(135deg,#e0e7ff,#a5b4fc,#fbcfe8)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', lineHeight:1.1 }}>NexChat</div>
                   <div style={{ fontSize:9, color:'rgba(255,255,255,.25)', letterSpacing:'0.14em', textTransform:'uppercase', marginTop:2 }}>
-                    {totalUnread > 0 ? <span style={{ color:'#a5b4fc' }}>● {totalUnread} unread</span> : 'Space Edition'}
+                    {totalUnread > 0 ? <span style={{ color:'#a5b4fc' }}>● {totalUnread} unread</span> : 'V3.0 beta'}
                   </div>
                 </div>
               </div>
