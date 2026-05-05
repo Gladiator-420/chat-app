@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { collection, addDoc, query, orderBy, onSnapshot, getDocs, where, serverTimestamp, doc, updateDoc, deleteDoc, arrayUnion, getDoc } from 'firebase/firestore';
+import { collection, addDoc, query, orderBy, onSnapshot, getDocs, where, serverTimestamp, doc, updateDoc, deleteDoc, arrayUnion, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import socket from './socket';
 import ProfileModal from './ProfileModal';
@@ -30,6 +30,17 @@ const fmtLastSeen = ts => {
   return d.toLocaleDateString();
 };
 
+// Mobile detection hook
+const useIsMobile = () => {
+  const [isMobile, setIsMobile] = useState(typeof window !== 'undefined' && window.innerWidth < 768);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
+  return isMobile;
+};
+
 // ── Avatar ────────────────────────────────────────────────────────────────────
 function Avatar({ name='?', size=36, photoURL, avatarColor, online }) {
   const [a,b] = avatarColor!=null ? GRADIENTS[avatarColor%GRADIENTS.length] : getGrad(name);
@@ -48,7 +59,7 @@ function Avatar({ name='?', size=36, photoURL, avatarColor, online }) {
 }
 
 // ── Message ───────────────────────────────────────────────────────────────────
-function Message({ msg, isOwn, prevSameUser, onDelete, currentUid }) {
+function Message({ msg, isOwn, prevSameUser, onDelete, currentUid, isMobile }) {
   const [hovered, setHovered] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const seen = (msg.seenBy||[]).some(uid=>uid!==currentUid);
@@ -62,15 +73,20 @@ function Message({ msg, isOwn, prevSameUser, onDelete, currentUid }) {
   );
 
   const [a] = getGrad(msg.senderHandle||'?');
-  return (
-    <div onMouseEnter={()=>setHovered(true)} onMouseLeave={()=>{setHovered(false);setConfirmDel(false);}}
-      style={{ display:'flex', gap:10, flexDirection:isOwn?'row-reverse':'row', marginBottom:prevSameUser?3:14, animation:'msgIn .22s cubic-bezier(0.34,1.56,0.64,1) both', position:'relative' }}>
+  const showActions = isMobile ? confirmDel : hovered;
 
-      <div style={{ width:40, flexShrink:0, display:'flex', alignItems:'flex-end' }}>
-        {!prevSameUser && !isOwn && <Avatar name={msg.senderHandle||'?'} size={34} photoURL={msg.senderPhoto} avatarColor={msg.senderAvatarColor}/>}
+  return (
+    <div
+      onMouseEnter={()=>!isMobile && setHovered(true)}
+      onMouseLeave={()=>{ if(!isMobile){setHovered(false);setConfirmDel(false);} }}
+      onClick={()=>isMobile && isOwn && setHovered(h=>!h)}
+      style={{ display:'flex', gap:isMobile?6:10, flexDirection:isOwn?'row-reverse':'row', marginBottom:prevSameUser?3:14, animation:'msgIn .22s cubic-bezier(0.34,1.56,0.64,1) both', position:'relative' }}>
+
+      <div style={{ width:isMobile?32:40, flexShrink:0, display:'flex', alignItems:'flex-end' }}>
+        {!prevSameUser && !isOwn && <Avatar name={msg.senderHandle||'?'} size={isMobile?28:34} photoURL={msg.senderPhoto} avatarColor={msg.senderAvatarColor}/>}
       </div>
 
-      <div style={{ maxWidth:'62%', display:'flex', flexDirection:'column', alignItems:isOwn?'flex-end':'flex-start', gap:3 }}>
+      <div style={{ maxWidth:isMobile?'78%':'62%', display:'flex', flexDirection:'column', alignItems:isOwn?'flex-end':'flex-start', gap:3 }}>
         {!prevSameUser && (
           <div style={{ display:'flex', alignItems:'baseline', gap:8, flexDirection:isOwn?'row-reverse':'row' }}>
             <span style={{ fontSize:12, fontWeight:700, color:isOwn?'#a5b4fc':a, fontFamily:"'Syne',sans-serif" }}>{isOwn?'You':`@${msg.senderHandle||'?'}`}</span>
@@ -80,13 +96,13 @@ function Message({ msg, isOwn, prevSameUser, onDelete, currentUid }) {
 
         <div style={{ display:'flex', alignItems:'center', gap:8, flexDirection:isOwn?'row-reverse':'row' }}>
           <div style={{
-            padding:'10px 15px',
+            padding:isMobile?'8px 12px':'10px 15px',
             borderRadius:isOwn?'20px 20px 5px 20px':'20px 20px 20px 5px',
             background:isOwn
               ? 'linear-gradient(135deg,#3730a3 0%,#6d28d9 50%,#be185d 100%)'
               : 'rgba(255,255,255,0.06)',
             border:isOwn?'none':'1px solid rgba(255,255,255,0.08)',
-            color:'#fff', fontSize:14, lineHeight:1.55, wordBreak:'break-word',
+            color:'#fff', fontSize:isMobile?13:14, lineHeight:1.55, wordBreak:'break-word',
             boxShadow:isOwn?'0 4px 24px rgba(79,70,229,0.35), 0 0 0 1px rgba(129,140,248,0.1)':'0 2px 8px rgba(0,0,0,0.3)',
             transition:'transform .15s',
             transform:hovered?'scale(1.015)':'scale(1)',
@@ -97,12 +113,12 @@ function Message({ msg, isOwn, prevSameUser, onDelete, currentUid }) {
             {isOwn && <div style={{ position:'absolute', inset:0, background:'linear-gradient(90deg,transparent,rgba(255,255,255,0.04),transparent)', backgroundSize:'200%', animation:'shimmer 3s linear infinite' }}/>}
           </div>
 
-          {isOwn && hovered && (
+          {isOwn && showActions && (
             !confirmDel
-              ? <button onClick={()=>setConfirmDel(true)} style={{ width:28, height:28, borderRadius:8, border:'none', background:'rgba(239,68,68,0.15)', color:'#f87171', cursor:'pointer', fontSize:13, transition:'all .15s' }}>🗑</button>
+              ? <button onClick={(e)=>{e.stopPropagation();setConfirmDel(true);}} style={{ width:28, height:28, borderRadius:8, border:'none', background:'rgba(239,68,68,0.15)', color:'#f87171', cursor:'pointer', fontSize:13, transition:'all .15s' }}>🗑</button>
               : <div style={{ display:'flex', gap:4 }}>
-                  <button onClick={()=>onDelete(msg.id)} style={{ padding:'4px 8px', borderRadius:6, border:'none', background:'rgba(239,68,68,0.7)', color:'#fff', cursor:'pointer', fontSize:11, fontWeight:700 }}>Delete</button>
-                  <button onClick={()=>setConfirmDel(false)} style={{ padding:'4px 8px', borderRadius:6, border:'none', background:'rgba(255,255,255,0.1)', color:'rgba(255,255,255,.6)', cursor:'pointer', fontSize:11 }}>Cancel</button>
+                  <button onClick={(e)=>{e.stopPropagation();onDelete(msg.id);}} style={{ padding:'4px 8px', borderRadius:6, border:'none', background:'rgba(239,68,68,0.7)', color:'#fff', cursor:'pointer', fontSize:11, fontWeight:700 }}>Delete</button>
+                  <button onClick={(e)=>{e.stopPropagation();setConfirmDel(false);setHovered(false);}} style={{ padding:'4px 8px', borderRadius:6, border:'none', background:'rgba(255,255,255,0.1)', color:'rgba(255,255,255,.6)', cursor:'pointer', fontSize:11 }}>Cancel</button>
                 </div>
           )}
         </div>
@@ -133,8 +149,8 @@ function TypingDots({ users }) {
 // ── Modal shell ───────────────────────────────────────────────────────────────
 function Modal({ title, onClose, children }) {
   return (
-    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',backdropFilter:'blur(8px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:200,fontFamily:"'DM Sans',sans-serif",padding:20 }}>
-      <div style={{ width:'100%',maxWidth:420,background:'#0c0c1e',border:'1px solid rgba(255,255,255,0.1)',borderRadius:24,padding:28,boxShadow:'0 40px 80px rgba(0,0,0,0.7)',animation:'modalIn .25s cubic-bezier(0.34,1.56,0.64,1) both',position:'relative',overflow:'hidden' }}>
+    <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.8)',backdropFilter:'blur(8px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:200,fontFamily:"'DM Sans',sans-serif",padding:16 }}>
+      <div style={{ width:'100%',maxWidth:420,background:'#0c0c1e',border:'1px solid rgba(255,255,255,0.1)',borderRadius:24,padding:24,boxShadow:'0 40px 80px rgba(0,0,0,0.7)',animation:'modalIn .25s cubic-bezier(0.34,1.56,0.64,1) both',position:'relative',overflow:'hidden',maxHeight:'90vh',overflowY:'auto' }}>
         <div style={{ position:'absolute',width:200,height:200,borderRadius:'50%',background:'radial-gradient(circle,rgba(79,70,229,0.1) 0%,transparent 70%)',top:-60,right:-60,pointerEvents:'none' }}/>
         <div style={{ display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:22,position:'relative' }}>
           <h3 style={{ color:'#fff',margin:0,fontSize:17,fontWeight:800,fontFamily:"'Syne',sans-serif" }}>{title}</h3>
@@ -157,7 +173,7 @@ function NewDMModal({ currentUser, onStart, onClose }) {
   const [result,setResult]=useState(null);
   const [loading,setLoading]=useState(false);
   const [err,setErr]=useState('');
-  const search=async()=>{ setErr('');setResult(null); const h=handle.trim().toLowerCase().replace('@',''); if(!h||h===currentUser.handle) return setErr('Invalid'); setLoading(true); const snap=await getDocs(query(collection(db,'users'),where('handle','==',h))); if(snap.empty) setErr(`@${h} not found`); else setResult({uid:snap.docs[0].id,...snap.docs[0].data()}); setLoading(false); };
+  const search=async()=>{ setErr('');setResult(null); const h=handle.trim().toLowerCase().replace('@',''); if(!h||h===currentUser.handle) return setErr('Invalid'); setLoading(true); try { const snap=await getDocs(query(collection(db,'users'),where('handle','==',h))); if(snap.empty) setErr(`@${h} not found`); else setResult({uid:snap.docs[0].id,...snap.docs[0].data()}); } catch(e) { setErr('Search failed'); } setLoading(false); };
   return (
     <Modal title="🛸 New Direct Message" onClose={onClose}>
       <div style={{ display:'flex',gap:8,marginBottom:14 }}>
@@ -165,9 +181,9 @@ function NewDMModal({ currentUser, onStart, onClose }) {
         <GradBtn onClick={search} disabled={loading}>{loading?'…':'Find'}</GradBtn>
       </div>
       {err&&<p style={{ color:'#fca5a5',fontSize:13,margin:'0 0 10px' }}>⚠ {err}</p>}
-      {result&&<div style={{ display:'flex',alignItems:'center',gap:12,padding:14,background:'rgba(129,140,248,0.08)',border:'1px solid rgba(129,140,248,0.2)',borderRadius:14 }}>
+      {result&&<div style={{ display:'flex',alignItems:'center',gap:12,padding:14,background:'rgba(129,140,248,0.08)',border:'1px solid rgba(129,140,248,0.2)',borderRadius:14,flexWrap:'wrap' }}>
         <Avatar name={result.handle} size={44} photoURL={result.photoURL} avatarColor={result.avatarColor}/>
-        <div style={{flex:1}}><div style={{color:'#fff',fontWeight:700,fontSize:14}}>@{result.handle}</div><div style={{color:'rgba(255,255,255,.4)',fontSize:12}}>{result.displayName||''}</div></div>
+        <div style={{flex:1,minWidth:120}}><div style={{color:'#fff',fontWeight:700,fontSize:14}}>@{result.handle}</div><div style={{color:'rgba(255,255,255,.4)',fontSize:12}}>{result.displayName||''}</div></div>
         <GradBtn onClick={()=>onStart(result)}>Chat →</GradBtn>
       </div>}
     </Modal>
@@ -182,8 +198,8 @@ function CreateGroupModal({ currentUser, onCreated, onClose }) {
   const [loading,setLoading]=useState(false);
   const [searching,setSearching]=useState(false);
   const [err,setErr]=useState('');
-  const add=async()=>{ const h=hi.trim().toLowerCase().replace('@',''); if(!h||h===currentUser.handle||members.find(m=>m.handle===h)) return setErr('Invalid or already added'); setSearching(true); const snap=await getDocs(query(collection(db,'users'),where('handle','==',h))); if(snap.empty) setErr(`@${h} not found`); else setMembers(p=>[...p,{uid:snap.docs[0].id,...snap.docs[0].data()}]); setHi('');setSearching(false);setErr(''); };
-  const create=async()=>{ if(!name.trim()) return setErr('Group name required'); setLoading(true); const all=[{uid:currentUser.uid,handle:currentUser.handle},...members]; const ref=await addDoc(collection(db,'groups'),{ name:name.trim(),createdBy:currentUser.uid,members:all.map(m=>m.uid),memberHandles:all.map(m=>m.handle),createdAt:serverTimestamp() }); onCreated({id:ref.id,name:name.trim(),members:all.map(m=>m.uid),memberHandles:all.map(m=>m.handle),createdBy:currentUser.uid}); setLoading(false); };
+  const add=async()=>{ const h=hi.trim().toLowerCase().replace('@',''); if(!h||h===currentUser.handle||members.find(m=>m.handle===h)) return setErr('Invalid or already added'); setSearching(true); try { const snap=await getDocs(query(collection(db,'users'),where('handle','==',h))); if(snap.empty) setErr(`@${h} not found`); else { setMembers(p=>[...p,{uid:snap.docs[0].id,...snap.docs[0].data()}]); setErr(''); } } catch(e) { setErr('Search failed'); } setHi('');setSearching(false); };
+  const create=async()=>{ if(!name.trim()) return setErr('Group name required'); setLoading(true); try { const all=[{uid:currentUser.uid,handle:currentUser.handle},...members]; const ref=await addDoc(collection(db,'groups'),{ name:name.trim(),createdBy:currentUser.uid,members:all.map(m=>m.uid),memberHandles:all.map(m=>m.handle),createdAt:serverTimestamp() }); onCreated({id:ref.id,name:name.trim(),members:all.map(m=>m.uid),memberHandles:all.map(m=>m.handle),createdBy:currentUser.uid}); } catch(e) { setErr('Failed to create group'); } setLoading(false); };
   return (
     <Modal title="🌌 Create Group" onClose={onClose}>
       <label style={{ display:'block',fontSize:10,fontWeight:700,color:'rgba(255,255,255,.4)',marginBottom:7,letterSpacing:'0.1em',textTransform:'uppercase' }}>Group Name</label>
@@ -205,8 +221,8 @@ function EditGroupModal({ group, currentUser, onClose, onUpdated }) {
   const [uids,setUids]=useState(group.members||[]);
   const [err,setErr]=useState('');
   const [loading,setLoading]=useState(false);
-  const add=async()=>{ const h=hi.trim().toLowerCase().replace('@',''); if(!h||handles.includes(h)) return setErr('Invalid or already added'); const snap=await getDocs(query(collection(db,'users'),where('handle','==',h))); if(snap.empty) return setErr(`@${h} not found`); setHandles(p=>[...p,h]);setUids(p=>[...p,snap.docs[0].id]);setHi('');setErr(''); };
-  const save=async()=>{ setLoading(true); await updateDoc(doc(db,'groups',group.id),{name:name.trim(),members:uids,memberHandles:handles}); onUpdated({...group,name:name.trim(),members:uids,memberHandles:handles}); setLoading(false);onClose(); };
+  const add=async()=>{ const h=hi.trim().toLowerCase().replace('@',''); if(!h||handles.includes(h)) return setErr('Invalid or already added'); try { const snap=await getDocs(query(collection(db,'users'),where('handle','==',h))); if(snap.empty) return setErr(`@${h} not found`); setHandles(p=>[...p,h]);setUids(p=>[...p,snap.docs[0].id]);setHi('');setErr(''); } catch(e) { setErr('Search failed'); } };
+  const save=async()=>{ setLoading(true); try { await updateDoc(doc(db,'groups',group.id),{name:name.trim(),members:uids,memberHandles:handles}); onUpdated({...group,name:name.trim(),members:uids,memberHandles:handles}); onClose(); } catch(e) { setErr('Save failed'); } setLoading(false); };
   return (
     <Modal title="✏️ Edit Group" onClose={onClose}>
       <label style={{ display:'block',fontSize:10,fontWeight:700,color:'rgba(255,255,255,.4)',marginBottom:7,letterSpacing:'0.1em',textTransform:'uppercase' }}>Name</label>
@@ -222,6 +238,7 @@ function EditGroupModal({ group, currentUser, onClose, onUpdated }) {
 
 // ── Main ChatRoom ─────────────────────────────────────────────────────────────
 export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
+  const isMobile = useIsMobile();
   const [userProfile, setUserProfile] = useState(initProfile);
   const [activeRoom, setActiveRoom] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -236,23 +253,76 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
   const [onlineSet, setOnlineSet] = useState(new Set());
   const [showProfile, setShowProfile] = useState(false);
   const [onlineCount, setOnlineCount] = useState(1);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const bottomRef = useRef(null);
   const typingRef = useRef(null);
   const inputRef = useRef(null);
 
+  // ── Real-time user profile sync (FIX: profile now syncs from Firestore) ──
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'users', firebaseUser.uid), snap => {
+      if (snap.exists()) setUserProfile(p => ({ ...p, ...snap.data() }));
+    }, err => console.error('Profile sync error:', err));
+    return unsub;
+  }, [firebaseUser.uid]);
+
+  // ── Persisted DM list (FIX: DMs now stored in user doc) ──
+  useEffect(() => {
+    const unsub = onSnapshot(doc(db, 'users', firebaseUser.uid), snap => {
+      if (snap.exists() && snap.data().dms) setDmList(snap.data().dms);
+    });
+    return unsub;
+  }, [firebaseUser.uid]);
+
+  // ── Groups sync ──
   useEffect(() => {
     const q = query(collection(db,'groups'), where('members','array-contains',firebaseUser.uid));
-    return onSnapshot(q, snap => setGroupList(snap.docs.map(d=>({id:d.id,...d.data()}))));
+    return onSnapshot(q,
+      snap => setGroupList(snap.docs.map(d=>({id:d.id,...d.data()}))),
+      err => console.error('Groups sync error:', err)
+    );
   }, [firebaseUser.uid]);
 
+  // ── Presence: online status with heartbeat (FIX: better presence tracking) ──
   useEffect(() => {
     const ref = doc(db,'users',firebaseUser.uid);
-    updateDoc(ref,{online:true,lastSeen:serverTimestamp()}).catch(()=>{});
-    const off = ()=>updateDoc(ref,{online:false,lastSeen:serverTimestamp()}).catch(()=>{});
-    window.addEventListener('beforeunload',off);
-    return ()=>{window.removeEventListener('beforeunload',off);off();};
+    const setOnline = () => updateDoc(ref,{online:true,lastSeen:serverTimestamp()}).catch(()=>{});
+    const setOffline = () => updateDoc(ref,{online:false,lastSeen:serverTimestamp()}).catch(()=>{});
+
+    setOnline();
+    const heartbeat = setInterval(setOnline, 30000); // every 30s
+    const handleVisibility = () => document.visibilityState === 'visible' ? setOnline() : setOffline();
+
+    window.addEventListener('beforeunload', setOffline);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(heartbeat);
+      window.removeEventListener('beforeunload', setOffline);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      setOffline();
+    };
   }, [firebaseUser.uid]);
 
+  // ── Real-time online status for DM partners (FIX: live online indicators) ──
+  useEffect(() => {
+    if (dmList.length === 0) return;
+    const unsubs = dmList.map(dm => {
+      return onSnapshot(doc(db, 'users', dm.uid), snap => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        setOnlineSet(prev => {
+          const next = new Set(prev);
+          if (data.online) next.add(dm.name); else next.delete(dm.name);
+          return next;
+        });
+        setLastSeenMap(prev => ({ ...prev, [dm.name]: data.lastSeen }));
+      });
+    });
+    return () => unsubs.forEach(u => u());
+  }, [dmList]);
+
+  // ── Messages sync ──
   useEffect(() => {
     if (!activeRoom) return;
     const path = activeRoom.type==='group' ? `groups/${activeRoom.id}/messages` : `dms/${activeRoom.id}/messages`;
@@ -264,9 +334,10 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
         if (m.sender!==firebaseUser.uid && !(m.seenBy||[]).includes(firebaseUser.uid))
           updateDoc(doc(db,path,m.id),{seenBy:arrayUnion(firebaseUser.uid)}).catch(()=>{});
       });
-    });
+    }, err => console.error('Messages sync error:', err));
   }, [activeRoom, firebaseUser.uid]);
 
+  // ── Socket ──
   useEffect(() => {
     if (!activeRoom) return;
     socket.connect();
@@ -279,46 +350,56 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}); },[messages,typingUsers]);
 
-  useEffect(() => {
-    if (!activeRoom||activeRoom.type!=='dm') return;
-    getDocs(query(collection(db,'users'),where('handle','==',activeRoom.name))).then(snap=>{
-      if (!snap.empty) setLastSeenMap(p=>({...p,[activeRoom.name]:snap.docs[0].data().lastSeen}));
-    });
-  }, [activeRoom]);
+  // Close sidebar when room selected on mobile
+  useEffect(() => { if (isMobile && activeRoom) setSidebarOpen(false); }, [activeRoom, isMobile]);
 
   const sendMessage = async () => {
     if (!input.trim()||!activeRoom) return;
-    const path = activeRoom.type==='group' ? `groups/${activeRoom.id}/messages` : `dms/${activeRoom.id}/messages`;
-    await addDoc(collection(db,path),{
-      text:input.trim(), sender:firebaseUser.uid,
-      senderHandle:userProfile.handle,
-      senderPhoto:userProfile.photoURL||'',
-      senderAvatarColor:userProfile.avatarColor??0,
-      timestamp:serverTimestamp(), seenBy:[firebaseUser.uid],
-    });
-    socket.emit('send_message',{room:activeRoom.id,message:input.trim()});
+    const text = input.trim();
     setInput('');
     setIsTyping(false);
     socket.emit('stop_typing',{room:activeRoom.id,username:userProfile.handle});
     clearTimeout(typingRef.current);
+
+    const path = activeRoom.type==='group' ? `groups/${activeRoom.id}/messages` : `dms/${activeRoom.id}/messages`;
+    try {
+      await addDoc(collection(db,path),{
+        text, sender:firebaseUser.uid,
+        senderHandle:userProfile.handle,
+        senderPhoto:userProfile.photoURL||'',
+        senderAvatarColor:userProfile.avatarColor??0,
+        timestamp:serverTimestamp(), seenBy:[firebaseUser.uid],
+      });
+      socket.emit('send_message',{room:activeRoom.id,message:text});
+    } catch(e) {
+      console.error('Send failed:', e);
+      setInput(text); // restore on failure
+    }
   };
 
   const handleInput = e => {
     setInput(e.target.value);
-    if (!isTyping) { setIsTyping(true); socket.emit('typing',{room:activeRoom.id,username:userProfile.handle}); }
+    if (!isTyping && activeRoom) { setIsTyping(true); socket.emit('typing',{room:activeRoom.id,username:userProfile.handle}); }
     clearTimeout(typingRef.current);
-    typingRef.current=setTimeout(()=>{ setIsTyping(false); socket.emit('stop_typing',{room:activeRoom.id,username:userProfile.handle}); },1500);
+    typingRef.current=setTimeout(()=>{ setIsTyping(false); if(activeRoom) socket.emit('stop_typing',{room:activeRoom.id,username:userProfile.handle}); },1500);
   };
 
   const deleteMsg = async id => {
     if (!activeRoom) return;
     const path = activeRoom.type==='group' ? `groups/${activeRoom.id}/messages` : `dms/${activeRoom.id}/messages`;
-    await deleteDoc(doc(db,path,id));
+    try { await deleteDoc(doc(db,path,id)); } catch(e) { console.error('Delete failed:', e); }
   };
 
-  const startDM = user => {
+  // ── Start DM (FIX: persist to Firestore) ──
+  const startDM = async user => {
     const id=getRoomId(firebaseUser.uid,user.uid);
-    if (!dmList.find(d=>d.id===id)) setDmList(p=>[...p,{id,name:user.handle,uid:user.uid,photo:user.photoURL,avatarColor:user.avatarColor}]);
+    const newDM = {id,name:user.handle,uid:user.uid,photo:user.photoURL||'',avatarColor:user.avatarColor??0};
+    if (!dmList.find(d=>d.id===id)) {
+      const updated = [...dmList, newDM];
+      try {
+        await setDoc(doc(db,'users',firebaseUser.uid),{dms:updated},{merge:true});
+      } catch(e) { console.error('DM persist failed:', e); }
+    }
     setActiveRoom({type:'dm',id,name:user.handle});
     setModal(null);
   };
@@ -344,13 +425,17 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
     );
   };
 
+  const sidebarWidth = isMobile ? 280 : 252;
+  const showSidebar = !isMobile || sidebarOpen;
+
   return (
-    <div style={{ height:'100vh', display:'flex', background:'#07070f', fontFamily:"'DM Sans',sans-serif", color:'#fff', overflow:'hidden', position:'relative' }}>
+    <div style={{ height:'100dvh', display:'flex', background:'#07070f', fontFamily:"'DM Sans',sans-serif", color:'#fff', overflow:'hidden', position:'relative' }}>
       <SpaceBg intensity="full"/>
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500;600;700&display=swap');
         *{box-sizing:border-box;margin:0;padding:0;}
+        html,body{overflow:hidden;overscroll-behavior:none;}
         ::-webkit-scrollbar{width:4px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.08);border-radius:4px;}
         @keyframes avatarRingRotate{to{transform:rotate(360deg)}}
         @keyframes msgIn{from{opacity:0;transform:translateY(10px) scale(0.96)}to{opacity:1;transform:translateY(0) scale(1)}}
@@ -361,7 +446,10 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
         @keyframes orbitSpin2{to{transform:rotate(-360deg)}}
         @keyframes coreGlow{0%,100%{box-shadow:0 0 30px rgba(79,70,229,.6)}50%{box-shadow:0 0 55px rgba(79,70,229,.9),0 0 80px rgba(219,39,119,.4)}}
         @keyframes fadeSlideUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes slideInLeft{from{transform:translateX(-100%)}to{transform:translateX(0)}}
         input::placeholder{color:rgba(255,255,255,0.2);}
+        input,textarea{font-size:16px!important;} /* Prevent iOS zoom */
+        @media(min-width:768px){input,textarea{font-size:14px!important;}}
         .send-btn{transition:all .2s;}
         .send-btn:hover:not(:disabled){transform:scale(1.08);}
       `}</style>
@@ -371,82 +459,53 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
       {modal==='createGroup' && <CreateGroupModal currentUser={{...userProfile,uid:firebaseUser.uid}} onCreated={g=>{setGroupList(p=>[...p,g]);setActiveRoom({type:'group',id:g.id,name:g.name});setModal(null);}} onClose={()=>setModal(null)}/>}
       {modal==='editGroup' && editTarget && <EditGroupModal group={editTarget} currentUser={{...userProfile,uid:firebaseUser.uid}} onClose={()=>{setModal(null);setEditTarget(null);}} onUpdated={g=>{setGroupList(p=>p.map(x=>x.id===g.id?g:x));setActiveRoom(r=>r?.id===g.id?{...r,name:g.name}:r);}}/>}
 
+      {/* Mobile overlay */}
+      {isMobile && sidebarOpen && (
+        <div onClick={()=>setSidebarOpen(false)} style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)',zIndex:99 }}/>
+      )}
+
       {/* ── Sidebar ── */}
-      <div style={{ width:252,flexShrink:0,background:'rgba(255,255,255,0.025)',borderRight:'1px solid rgba(255,255,255,0.06)',display:'flex',flexDirection:'column',position:'relative',overflow:'hidden' }}>
+      <div style={{
+        width:sidebarWidth, flexShrink:0,
+        background:'rgba(10,10,25,0.95)',
+        borderRight:'1px solid rgba(255,255,255,0.06)',
+        display:'flex',flexDirection:'column',position:isMobile?'fixed':'relative',
+        height:'100dvh', left:0, top:0,
+        transform: showSidebar ? 'translateX(0)' : 'translateX(-100%)',
+        transition: isMobile ? 'transform .28s ease' : 'none',
+        zIndex:100,
+        backdropFilter:'blur(20px)',
+        overflow:'hidden',
+      }}>
         <div style={{ position:'relative',zIndex:1,display:'flex',flexDirection:'column',height:'100%' }}>
 
-          {/* ── Logo — full rotating planet system ── */}
+          {/* Logo */}
           <div style={{ padding:'18px 16px 16px', borderBottom:'1px solid rgba(255,255,255,0.06)' }}>
-            <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-
-              {/* Planet orrery — same as Login but scaled to 52px */}
-              <div style={{ position:'relative', width:52, height:52, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                {/* Outer ring — indigo dot */}
-                <div style={{
-                  position:'absolute', width:52, height:52, borderRadius:'50%',
-                  border:'1px solid rgba(129,140,248,0.3)',
-                  animation:'orbitSpin1 12s linear infinite',
-                }}>
-                  <div style={{
-                    position:'absolute', top:-4, left:'50%', transform:'translateX(-50%)',
-                    width:7, height:7, borderRadius:'50%',
-                    background:'#818cf8',
-                    boxShadow:'0 0 10px #818cf8, 0 0 20px rgba(129,140,248,.5)',
-                  }}/>
+            <div style={{ display:'flex', alignItems:'center', gap:12, justifyContent:'space-between' }}>
+              <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                <div style={{ position:'relative', width:52, height:52, flexShrink:0, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                  <div style={{ position:'absolute', width:52, height:52, borderRadius:'50%', border:'1px solid rgba(129,140,248,0.3)', animation:'orbitSpin1 12s linear infinite' }}>
+                    <div style={{ position:'absolute', top:-4, left:'50%', transform:'translateX(-50%)', width:7, height:7, borderRadius:'50%', background:'#818cf8', boxShadow:'0 0 10px #818cf8, 0 0 20px rgba(129,140,248,.5)' }}/>
+                  </div>
+                  <div style={{ position:'absolute', width:38, height:38, borderRadius:'50%', border:'1px solid rgba(244,114,182,0.22)', animation:'orbitSpin2 8s linear infinite' }}>
+                    <div style={{ position:'absolute', top:-3, left:'50%', transform:'translateX(-50%)', width:5, height:5, borderRadius:'50%', background:'#f472b6', boxShadow:'0 0 8px #f472b6' }}/>
+                  </div>
+                  <div style={{ position:'absolute', width:26, height:26, borderRadius:'50%', border:'1px dashed rgba(52,211,153,0.18)', animation:'orbitSpin1 5s linear infinite' }}>
+                    <div style={{ position:'absolute', bottom:-2, right:1, width:4, height:4, borderRadius:'50%', background:'#34d399', boxShadow:'0 0 6px #34d399' }}/>
+                  </div>
+                  <div style={{ width:20, height:20, borderRadius:7, background:'linear-gradient(135deg,#3730a3,#6d28d9,#be185d)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:10, animation:'coreGlow 2.5s ease-in-out infinite', position:'relative', zIndex:3, boxShadow:'0 0 20px rgba(79,70,229,.5)' }}>💬</div>
                 </div>
-                {/* Mid ring — pink dot */}
-                <div style={{
-                  position:'absolute', width:38, height:38, borderRadius:'50%',
-                  border:'1px solid rgba(244,114,182,0.22)',
-                  animation:'orbitSpin2 8s linear infinite',
-                }}>
-                  <div style={{
-                    position:'absolute', top:-3, left:'50%', transform:'translateX(-50%)',
-                    width:5, height:5, borderRadius:'50%',
-                    background:'#f472b6',
-                    boxShadow:'0 0 8px #f472b6',
-                  }}/>
+                <div>
+                  <div style={{ fontWeight:800, fontSize:17, letterSpacing:'-0.5px', fontFamily:"'Syne',sans-serif", background:'linear-gradient(135deg,#e0e7ff,#a5b4fc,#fbcfe8)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', lineHeight:1.1 }}>NexChat</div>
+                  <div style={{ fontSize:9, color:'rgba(255,255,255,.25)', letterSpacing:'0.14em', textTransform:'uppercase', marginTop:2 }}>Space Edition</div>
                 </div>
-                {/* Inner dashed ring — green dot */}
-                <div style={{
-                  position:'absolute', width:26, height:26, borderRadius:'50%',
-                  border:'1px dashed rgba(52,211,153,0.18)',
-                  animation:'orbitSpin1 5s linear infinite',
-                }}>
-                  <div style={{
-                    position:'absolute', bottom:-2, right:1,
-                    width:4, height:4, borderRadius:'50%',
-                    background:'#34d399',
-                    boxShadow:'0 0 6px #34d399',
-                  }}/>
-                </div>
-                {/* Core */}
-                <div style={{
-                  width:20, height:20, borderRadius:7,
-                  background:'linear-gradient(135deg,#3730a3,#6d28d9,#be185d)',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  fontSize:10,
-                  animation:'coreGlow 2.5s ease-in-out infinite',
-                  position:'relative', zIndex:3,
-                  boxShadow:'0 0 20px rgba(79,70,229,.5)',
-                }}>💬</div>
               </div>
-
-              {/* Wordmark */}
-              <div>
-                <div style={{
-                  fontWeight:800, fontSize:17, letterSpacing:'-0.5px',
-                  fontFamily:"'Syne',sans-serif",
-                  background:'linear-gradient(135deg,#e0e7ff,#a5b4fc,#fbcfe8)',
-                  WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
-                  lineHeight:1.1,
-                }}>NexChat</div>
-                <div style={{ fontSize:9, color:'rgba(255,255,255,.25)', letterSpacing:'0.14em', textTransform:'uppercase', marginTop:2 }}>Space Edition</div>
-              </div>
+              {isMobile && (
+                <button onClick={()=>setSidebarOpen(false)} style={{ background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',width:34,height:34,borderRadius:10,color:'#fff',fontSize:18,cursor:'pointer' }}>×</button>
+              )}
             </div>
           </div>
 
-          {/* Nav list */}
           <div style={{ flex:1,overflowY:'auto',padding:'12px 10px' }}>
             <div style={{ display:'flex',alignItems:'center',justifyContent:'space-between',padding:'0 4px',marginBottom:6 }}>
               <span style={{ fontSize:9,fontWeight:700,color:'rgba(255,255,255,.3)',letterSpacing:'0.12em',textTransform:'uppercase' }}>Direct Messages</span>
@@ -463,7 +522,6 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
             {groupList.map(g=><SItem key={g.id} label={g.name} isActive={activeRoom?.id===g.id} onClick={()=>setActiveRoom({type:'group',id:g.id,name:g.name})} isGroup extra={g.createdBy===firebaseUser.uid&&<button onClick={e=>{e.stopPropagation();setEditTarget(g);setModal('editGroup');}} style={{ background:'none',border:'none',color:'rgba(255,255,255,.3)',cursor:'pointer',fontSize:13,padding:'2px 4px' }}>✏️</button>}/>)}
           </div>
 
-          {/* Profile footer */}
           <div style={{ padding:'12px 14px',borderTop:'1px solid rgba(255,255,255,0.06)',display:'flex',alignItems:'center',gap:10,cursor:'pointer',background:'rgba(255,255,255,0.02)' }} onClick={()=>setShowProfile(true)}>
             <Avatar name={userProfile.handle} size={32} photoURL={userProfile.photoURL} avatarColor={userProfile.avatarColor} online={true}/>
             <div style={{ flex:1,overflow:'hidden' }}>
@@ -476,30 +534,32 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
       </div>
 
       {/* ── Main ── */}
-      <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative' }}>
+      <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative',width:isMobile?'100%':'auto' }}>
         <div style={{ position:'relative',zIndex:1,display:'flex',flexDirection:'column',height:'100%' }}>
 
           {!activeRoom ? (
-            <div style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20 }}>
-              {/* Welcome orrery — medium size */}
-              <div style={{ position:'relative', width:120, height:120, display:'flex', alignItems:'center', justifyContent:'center' }}>
-                <div style={{ position:'absolute', width:120, height:120, borderRadius:'50%', border:'1px solid rgba(129,140,248,0.2)', animation:'orbitSpin1 12s linear infinite' }}>
+            <div style={{ flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:20,padding:20 }}>
+              {isMobile && (
+                <button onClick={()=>setSidebarOpen(true)} style={{ position:'absolute',top:16,left:16,background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',width:40,height:40,borderRadius:11,color:'#fff',fontSize:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center' }}>☰</button>
+              )}
+              <div style={{ position:'relative', width:isMobile?96:120, height:isMobile?96:120, display:'flex', alignItems:'center', justifyContent:'center' }}>
+                <div style={{ position:'absolute', width:'100%', height:'100%', borderRadius:'50%', border:'1px solid rgba(129,140,248,0.2)', animation:'orbitSpin1 12s linear infinite' }}>
                   <div style={{ position:'absolute', top:-5, left:'50%', transform:'translateX(-50%)', width:10, height:10, borderRadius:'50%', background:'#818cf8', boxShadow:'0 0 14px #818cf8, 0 0 28px rgba(129,140,248,.5)' }}/>
                 </div>
-                <div style={{ position:'absolute', width:88, height:88, borderRadius:'50%', border:'1px solid rgba(244,114,182,0.18)', animation:'orbitSpin2 8s linear infinite' }}>
+                <div style={{ position:'absolute', width:'73%', height:'73%', borderRadius:'50%', border:'1px solid rgba(244,114,182,0.18)', animation:'orbitSpin2 8s linear infinite' }}>
                   <div style={{ position:'absolute', top:-4, left:'50%', transform:'translateX(-50%)', width:8, height:8, borderRadius:'50%', background:'#f472b6', boxShadow:'0 0 10px #f472b6' }}/>
                 </div>
-                <div style={{ position:'absolute', width:62, height:62, borderRadius:'50%', border:'1px dashed rgba(52,211,153,0.15)', animation:'orbitSpin1 5s linear infinite' }}>
+                <div style={{ position:'absolute', width:'52%', height:'52%', borderRadius:'50%', border:'1px dashed rgba(52,211,153,0.15)', animation:'orbitSpin1 5s linear infinite' }}>
                   <div style={{ position:'absolute', bottom:-3, right:3, width:6, height:6, borderRadius:'50%', background:'#34d399', boxShadow:'0 0 8px #34d399' }}/>
                 </div>
-                <div style={{ width:40, height:40, borderRadius:13, background:'linear-gradient(135deg,#3730a3,#6d28d9,#be185d)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, animation:'coreGlow 2.5s ease-in-out infinite', zIndex:2, boxShadow:'0 0 30px rgba(79,70,229,.5)' }}>💬</div>
+                <div style={{ width:isMobile?32:40, height:isMobile?32:40, borderRadius:13, background:'linear-gradient(135deg,#3730a3,#6d28d9,#be185d)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:isMobile?15:18, animation:'coreGlow 2.5s ease-in-out infinite', zIndex:2, boxShadow:'0 0 30px rgba(79,70,229,.5)' }}>💬</div>
               </div>
 
               <div style={{ textAlign:'center' }}>
-                <h2 style={{ fontSize:26,fontWeight:800,fontFamily:"'Syne',sans-serif",background:'linear-gradient(135deg,#e0e7ff,#a5b4fc,#fbcfe8)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',margin:'0 0 8px' }}>Welcome to NexChat</h2>
-                <p style={{ color:'rgba(255,255,255,.3)',fontSize:14 }}>Open a DM or create a group to start chatting across the cosmos</p>
+                <h2 style={{ fontSize:isMobile?20:26,fontWeight:800,fontFamily:"'Syne',sans-serif",background:'linear-gradient(135deg,#e0e7ff,#a5b4fc,#fbcfe8)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',margin:'0 0 8px' }}>Welcome to NexChat</h2>
+                <p style={{ color:'rgba(255,255,255,.3)',fontSize:isMobile?12:14,padding:'0 12px' }}>Open a DM or create a group to start chatting across the cosmos</p>
               </div>
-              <div style={{ display:'flex',gap:12 }}>
+              <div style={{ display:'flex',gap:12,flexWrap:'wrap',justifyContent:'center' }}>
                 <button onClick={()=>setModal('newDM')} style={{ padding:'11px 22px',background:'rgba(129,140,248,0.1)',border:'1px solid rgba(129,140,248,0.25)',borderRadius:14,color:'#a5b4fc',cursor:'pointer',fontWeight:700,fontSize:13,fontFamily:"'Syne',sans-serif" }}>🛸 New DM</button>
                 <button onClick={()=>setModal('createGroup')} style={{ padding:'11px 22px',background:'rgba(219,39,119,0.1)',border:'1px solid rgba(219,39,119,0.2)',borderRadius:14,color:'#f9a8d4',cursor:'pointer',fontWeight:700,fontSize:13,fontFamily:"'Syne',sans-serif" }}>🌌 Create Group</button>
               </div>
@@ -507,14 +567,17 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
           ) : (
             <>
               {/* Header */}
-              <div style={{ padding:'14px 24px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',alignItems:'center',gap:14,background:'rgba(7,7,15,0.7)',backdropFilter:'blur(16px)' }}>
+              <div style={{ padding:isMobile?'10px 14px':'14px 24px',borderBottom:'1px solid rgba(255,255,255,0.06)',display:'flex',alignItems:'center',gap:isMobile?10:14,background:'rgba(7,7,15,0.85)',backdropFilter:'blur(16px)',flexShrink:0 }}>
+                {isMobile && (
+                  <button onClick={()=>setSidebarOpen(true)} style={{ background:'rgba(255,255,255,0.05)',border:'1px solid rgba(255,255,255,0.08)',width:36,height:36,borderRadius:10,color:'#fff',fontSize:18,cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center' }}>☰</button>
+                )}
                 {activeRoom.type==='dm'
-                  ? <Avatar name={activeRoom.name} size={40} online={isOtherOnline}/>
-                  : <div style={{ width:42,height:42,borderRadius:14,background:'linear-gradient(135deg,rgba(129,140,248,0.2),rgba(244,114,182,0.15))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:800,color:'#a5b4fc',flexShrink:0,border:'1px solid rgba(129,140,248,0.2)' }}>{activeRoom.name[0]}</div>
+                  ? <Avatar name={activeRoom.name} size={isMobile?34:40} online={isOtherOnline}/>
+                  : <div style={{ width:isMobile?36:42,height:isMobile?36:42,borderRadius:14,background:'linear-gradient(135deg,rgba(129,140,248,0.2),rgba(244,114,182,0.15))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:isMobile?16:20,fontWeight:800,color:'#a5b4fc',flexShrink:0,border:'1px solid rgba(129,140,248,0.2)' }}>{activeRoom.name[0]}</div>
                 }
-                <div style={{ flex:1 }}>
-                  <div style={{ fontWeight:800,fontSize:17,fontFamily:"'Syne',sans-serif" }}>{activeRoom.type==='dm'?`@${activeRoom.name}`:activeRoom.name}</div>
-                  <div style={{ fontSize:11,color:'rgba(255,255,255,.4)' }}>
+                <div style={{ flex:1,minWidth:0 }}>
+                  <div style={{ fontWeight:800,fontSize:isMobile?15:17,fontFamily:"'Syne',sans-serif",overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>{activeRoom.type==='dm'?`@${activeRoom.name}`:activeRoom.name}</div>
+                  <div style={{ fontSize:11,color:'rgba(255,255,255,.4)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap' }}>
                     {activeRoom.type==='dm'
                       ? isOtherOnline ? <span style={{color:'#10b981'}}>🟢 Online now</span> : `⚫ Last seen ${fmtLastSeen(lastSeenMap[activeRoom.name])}`
                       : `🌌 ${groupList.find(g=>g.id===activeRoom.id)?.members?.length||0} members · ${onlineCount} online`
@@ -522,39 +585,39 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
                   </div>
                 </div>
                 {activeRoom.type==='group' && groupList.find(g=>g.id===activeRoom.id)?.createdBy===firebaseUser.uid && (
-                  <button onClick={()=>{setEditTarget(groupList.find(g=>g.id===activeRoom.id));setModal('editGroup');}} style={{ padding:'8px 16px',background:'rgba(129,140,248,0.1)',border:'1px solid rgba(129,140,248,0.2)',borderRadius:11,color:'#a5b4fc',cursor:'pointer',fontSize:12,fontWeight:700,fontFamily:"'Syne',sans-serif" }}>✏️ Edit</button>
+                  <button onClick={()=>{setEditTarget(groupList.find(g=>g.id===activeRoom.id));setModal('editGroup');}} style={{ padding:isMobile?'7px 10px':'8px 16px',background:'rgba(129,140,248,0.1)',border:'1px solid rgba(129,140,248,0.2)',borderRadius:11,color:'#a5b4fc',cursor:'pointer',fontSize:12,fontWeight:700,fontFamily:"'Syne',sans-serif",flexShrink:0 }}>✏️{!isMobile && ' Edit'}</button>
                 )}
               </div>
 
               {/* Messages */}
-              <div style={{ flex:1,overflowY:'auto',padding:'20px 24px' }}>
+              <div style={{ flex:1,overflowY:'auto',padding:isMobile?'14px 12px':'20px 24px',WebkitOverflowScrolling:'touch' }}>
                 {messages.length===0&&(
                   <div style={{ textAlign:'center',color:'rgba(255,255,255,.2)',marginTop:60,animation:'fadeSlideUp .4s both' }}>
                     <div style={{ fontSize:44,marginBottom:14 }}>{activeRoom.type==='dm'?'🛸':'🌌'}</div>
-                    <div style={{ fontSize:16,fontWeight:800,fontFamily:"'Syne',sans-serif",marginBottom:6 }}>{activeRoom.type==='dm'?`Start a transmission with @${activeRoom.name}`:`Welcome to ${activeRoom.name}`}</div>
+                    <div style={{ fontSize:isMobile?14:16,fontWeight:800,fontFamily:"'Syne',sans-serif",marginBottom:6,padding:'0 12px' }}>{activeRoom.type==='dm'?`Start a transmission with @${activeRoom.name}`:`Welcome to ${activeRoom.name}`}</div>
                     <div style={{ fontSize:13,color:'rgba(255,255,255,.15)' }}>The universe is waiting for your message</div>
                   </div>
                 )}
                 {messages.map((msg,i)=>{
                   const prev=messages[i-1];
                   const prevSame=prev&&!prev.system&&prev.sender===msg.sender;
-                  return <Message key={msg.id} msg={msg} isOwn={msg.sender===firebaseUser.uid} prevSameUser={prevSame} onDelete={deleteMsg} currentUid={firebaseUser.uid}/>;
+                  return <Message key={msg.id} msg={msg} isOwn={msg.sender===firebaseUser.uid} prevSameUser={prevSame} onDelete={deleteMsg} currentUid={firebaseUser.uid} isMobile={isMobile}/>;
                 })}
                 <TypingDots users={typingUsers.filter(u=>u!==userProfile.handle)}/>
                 <div ref={bottomRef}/>
               </div>
 
               {/* Input */}
-              <div style={{ padding:'14px 20px',borderTop:'1px solid rgba(255,255,255,0.06)',background:'rgba(7,7,15,0.7)',backdropFilter:'blur(16px)' }}>
-                <div style={{ display:'flex',gap:10,alignItems:'center',background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'6px 6px 6px 18px',boxShadow:'0 4px 20px rgba(0,0,0,0.3), 0 0 0 1px rgba(129,140,248,0.04)',transition:'border-color .2s',borderColor:input.trim()?'rgba(129,140,248,0.2)':'rgba(255,255,255,0.08)' }}>
-                  <input ref={inputRef} value={input} onChange={handleInput} onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&sendMessage()} placeholder={activeRoom.type==='dm'?`Send a transmission to @${activeRoom.name}…`:`Message ${activeRoom.name}…`} style={{ flex:1,background:'transparent',border:'none',outline:'none',color:'#fff',fontSize:14,fontFamily:"'DM Sans',sans-serif" }}/>
+              <div style={{ padding:isMobile?'10px 12px':'14px 20px',borderTop:'1px solid rgba(255,255,255,0.06)',background:'rgba(7,7,15,0.85)',backdropFilter:'blur(16px)',flexShrink:0,paddingBottom:isMobile?'calc(10px + env(safe-area-inset-bottom))':'14px' }}>
+                <div style={{ display:'flex',gap:8,alignItems:'center',background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:20,padding:'5px 5px 5px 16px',boxShadow:'0 4px 20px rgba(0,0,0,0.3), 0 0 0 1px rgba(129,140,248,0.04)',transition:'border-color .2s',borderColor:input.trim()?'rgba(129,140,248,0.2)':'rgba(255,255,255,0.08)' }}>
+                  <input ref={inputRef} value={input} onChange={handleInput} onKeyDown={e=>e.key==='Enter'&&!e.shiftKey&&!isMobile&&sendMessage()} placeholder={activeRoom.type==='dm'?`@${activeRoom.name}…`:`Message ${activeRoom.name}…`} style={{ flex:1,background:'transparent',border:'none',outline:'none',color:'#fff',fontFamily:"'DM Sans',sans-serif",minWidth:0 }}/>
                   <button className="send-btn" onClick={sendMessage} disabled={!input.trim()} style={{
-                    width:44,height:44,borderRadius:14,border:'none',
+                    width:isMobile?38:44,height:isMobile?38:44,borderRadius:13,border:'none',
                     background:input.trim()?'linear-gradient(135deg,#3730a3,#6d28d9,#be185d)':'rgba(255,255,255,0.05)',
                     color:input.trim()?'#fff':'rgba(255,255,255,.2)',
                     cursor:input.trim()?'pointer':'not-allowed',
                     display:'flex',alignItems:'center',justifyContent:'center',
-                    fontSize:18,flexShrink:0,
+                    fontSize:isMobile?16:18,flexShrink:0,
                     boxShadow:input.trim()?'0 4px 20px rgba(79,70,229,.5), 0 0 0 1px rgba(129,140,248,0.2)':'none',
                     position:'relative',overflow:'hidden',
                   }}>
