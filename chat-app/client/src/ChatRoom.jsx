@@ -506,16 +506,49 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
     try { await deleteDoc(doc(db,path,id)); } catch(e) { console.error('Delete failed:', e); }
   };
 
-  const startDM = async user => {
-    const id=getRoomId(firebaseUser.uid,user.uid);
-    const newDM = {id,name:user.handle,uid:user.uid,photo:user.photoURL||'',avatarColor:user.avatarColor??0};
-    if (!dmList.find(d=>d.id===id)) {
-      const updated = [...dmList, newDM];
-      try { await setDoc(doc(db,'users',firebaseUser.uid),{dms:updated},{merge:true}); } catch(e) {}
-    }
-    setActiveRoom({type:'dm',id,name:user.handle,uid:user.uid});
-    setModal(null);
+ const startDM = async (user) => {
+  const id = getRoomId(firebaseUser.uid, user.uid);
+
+  const myDM = {
+    id,
+    name: user.handle,
+    uid: user.uid,
+    photo: user.photoURL || '',
+    avatarColor: user.avatarColor ?? 0
   };
+
+  const otherDM = {
+    id,
+    name: userProfile.handle,
+    uid: firebaseUser.uid,
+    photo: userProfile.photoURL || '',
+    avatarColor: userProfile.avatarColor ?? 0
+  };
+
+  try {
+    // ✅ Add DM to current user (YOU)
+    if (!dmList.find(d => d.id === id)) {
+      await setDoc(
+        doc(db, 'users', firebaseUser.uid),
+        { dms: arrayUnion(myDM) },
+        { merge: true }
+      );
+    }
+
+    // ✅ Add DM to OTHER USER (IMPORTANT FIX)
+    await setDoc(
+      doc(db, 'users', user.uid),
+      { dms: arrayUnion(otherDM) },
+      { merge: true }
+    );
+
+  } catch (e) {
+    console.error("Error creating DM:", e);
+  }
+
+  setActiveRoom({ type: 'dm', id, name: user.handle, uid: user.uid });
+  setModal(null);
+};
 
   const signOut = ()=>{ updateDoc(doc(db,'users',firebaseUser.uid),{online:false,lastSeen:serverTimestamp()}).catch(()=>{}); auth.signOut(); };
 
