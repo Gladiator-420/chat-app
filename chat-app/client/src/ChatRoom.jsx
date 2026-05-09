@@ -59,7 +59,8 @@ function Avatar({ name='?', size=36, photoURL, avatarColor, online }) {
 }
 
 // ── Message ───────────────────────────────────────────────────────────────────
-function Message({ msg, isOwn, prevSameUser, onDelete, currentUid, isMobile }) {
+// usersMap is passed in so avatars always reflect the latest profile photo/color
+function Message({ msg, isOwn, prevSameUser, onDelete, currentUid, isMobile, usersMap }) {
   const [showActions, setShowActions] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
   const seen = (msg.seenBy||[]).some(uid=>uid!==currentUid);
@@ -74,6 +75,11 @@ function Message({ msg, isOwn, prevSameUser, onDelete, currentUid, isMobile }) {
   );
 
   const [a] = getGrad(msg.senderHandle||'?');
+
+  // ── Live avatar: prefer usersMap data over stale message snapshot ──
+  const liveUser = usersMap?.[msg.sender];
+  const displayPhoto = liveUser?.photoURL ?? msg.senderPhoto ?? '';
+  const displayAvatarColor = liveUser?.avatarColor ?? msg.senderAvatarColor;
 
   // Long press for mobile
   const handleTouchStart = () => {
@@ -103,7 +109,14 @@ function Message({ msg, isOwn, prevSameUser, onDelete, currentUid, isMobile }) {
       style={{ display:'flex', gap:isMobile?6:10, flexDirection:isOwn?'row-reverse':'row', marginBottom:prevSameUser?3:14, animation:'msgIn .22s cubic-bezier(0.34,1.56,0.64,1) both', position:'relative' }}>
 
       <div style={{ width:isMobile?32:40, flexShrink:0, display:'flex', alignItems:'flex-end' }}>
-        {!prevSameUser && !isOwn && <Avatar name={msg.senderHandle||'?'} size={isMobile?28:34} photoURL={msg.senderPhoto} avatarColor={msg.senderAvatarColor}/>}
+        {!prevSameUser && !isOwn && (
+          <Avatar
+            name={msg.senderHandle||'?'}
+            size={isMobile?28:34}
+            photoURL={displayPhoto}
+            avatarColor={displayAvatarColor}
+          />
+        )}
       </div>
 
       <div style={{ maxWidth:isMobile?'78%':'62%', display:'flex', flexDirection:'column', alignItems:isOwn?'flex-end':'flex-start', gap:3 }}>
@@ -253,14 +266,14 @@ function GroupInfoModal({ group, currentUser, presenceMap, onClose, onUpdated, o
 
   return (
     <div style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.9)',backdropFilter:'blur(16px)',display:'flex',alignItems:'center',justifyContent:'center',zIndex:200,fontFamily:"'DM Sans',sans-serif",padding:16 }}>
-      <div style={{ width:'100%',maxWidth:520,background:'#0a0a1e',border:'1px solid rgba(255,255,255,0.08)',borderRadius:28,overflow:'hidden',maxHeight:'92vh',display:'flex',flexDirection:'column',boxShadow:'0 60px 120px rgba(0,0,0,0.9)',animation:'modalIn .28s cubic-bezier(0.34,1.56,0.64,1) both' }}>
+      <div style={{ width:'100%',maxWidth:520,background:'#0a0a1e',border:'1px solid rgba(255,255,255,0.08)',borderRadius:28,overflow:'visible',maxHeight:'92vh',display:'flex',flexDirection:'column',boxShadow:'0 60px 120px rgba(0,0,0,0.9)',animation:'modalIn .28s cubic-bezier(0.34,1.56,0.64,1) both' }}>
         
         {/* Header banner */}
-        <div style={{ position:'relative',padding:'28px 24px 20px',background:'linear-gradient(135deg,rgba(55,48,163,0.4),rgba(109,40,217,0.3),rgba(190,24,93,0.2))',borderBottom:'1px solid rgba(255,255,255,0.06)',flexShrink:0 }}>
+        <div style={{ position:'relative',padding:'28px 24px 20px',background:'linear-gradient(135deg,rgba(55,48,163,0.4),rgba(109,40,217,0.3),rgba(190,24,93,0.2))',borderBottom:'1px solid rgba(255,255,255,0.06)',flexShrink:0,borderRadius:'28px 28px 0 0',overflow:'hidden' }}>
           <div style={{ position:'absolute',inset:0,backgroundImage:'radial-gradient(circle at 20% 50%,rgba(129,140,248,0.15),transparent 60%)',pointerEvents:'none' }}/>
           <button onClick={onClose} style={{ position:'absolute',top:14,right:14,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.1)',color:'rgba(255,255,255,0.6)',fontSize:18,cursor:'pointer',width:34,height:34,borderRadius:10,display:'flex',alignItems:'center',justifyContent:'center' }}>×</button>
           <div style={{ display:'flex',alignItems:'center',gap:16,position:'relative' }}>
-            <div style={{ width:64,height:64,borderRadius:20,background:'linear-gradient(135deg,rgba(129,140,248,0.25),rgba(244,114,182,0.2))',border:'1px solid rgba(129,140,248,0.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:30,flexShrink:0,boxShadow:'0 8px 32px rgba(79,70,229,0.3)' }}>{group.icon||'🌌'}</div>
+            <div style={{ width:64,height:64,borderRadius:20,background:'linear-gradient(135deg,rgba(129,140,248,0.25),rgba(244,114,182,0.2))',border:'1px solid rgba(129,140,248,0.3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:30,flexShrink:0,boxShadow:'0 8px 32px rgba(79,70,229,0.3)' }}>{icon||'🌌'}</div>
             <div>
               <div style={{ fontSize:20,fontWeight:800,color:'#fff',fontFamily:"'Syne',sans-serif",marginBottom:4 }}>{group.name}</div>
               {group.bio && <div style={{ fontSize:13,color:'rgba(255,255,255,0.5)',lineHeight:1.5,maxWidth:280 }}>{group.bio}</div>}
@@ -279,32 +292,57 @@ function GroupInfoModal({ group, currentUser, presenceMap, onClose, onUpdated, o
         </div>
 
         {/* Tab content */}
-        <div style={{ overflowY:'auto',padding:'20px 22px 24px',flex:1 }}>
+        <div style={{ overflowY:'auto',padding:'20px 22px 24px',flex:1,borderRadius:'0 0 28px 28px' }}>
           
           {/* INFO TAB */}
           {tab === 'info' && (
             <div style={{ display:'flex',flexDirection:'column',gap:14 }}>
-              {isOwner && <>
-                <div>
-                  <label style={{ fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'0.1em',textTransform:'uppercase',display:'block',marginBottom:8 }}>Group Icon</label>
-                  <div style={{ display:'flex',flexWrap:'wrap',gap:8,padding:'14px',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:14 }}>
-                    {GROUP_ICONS.map(em => (
-                      <button key={em} onClick={()=>setIcon(em)} style={{ width:40,height:40,borderRadius:11,border:icon===em?'2px solid #818cf8':'2px solid transparent',background:icon===em?'rgba(129,140,248,0.2)':'rgba(255,255,255,0.04)',cursor:'pointer',fontSize:20,display:'flex',alignItems:'center',justifyContent:'center',transition:'all .15s',transform:icon===em?'scale(1.15)':'scale(1)',boxShadow:icon===em?'0 0 12px rgba(129,140,248,0.5)':'none' }}>{em}</button>
-                    ))}
+
+              {/* ── Icon picker: always rendered, pointer-events gated by isOwner ── */}
+              <div>
+                <label style={{ fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'0.1em',textTransform:'uppercase',display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8 }}>
+                  <span>Group Icon</span>
+                  {!isOwner && <span style={{ fontSize:10,color:'rgba(255,255,255,0.2)',fontWeight:400,letterSpacing:0,textTransform:'none' }}>Only the owner can change this</span>}
+                </label>
+                <div style={{ display:'flex',flexWrap:'wrap',gap:8,padding:'14px',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:14,pointerEvents:isOwner?'auto':'none',opacity:isOwner?1:0.5 }}>
+                  {GROUP_ICONS.map(em => (
+                    <button
+                      key={em}
+                      onClick={()=>{ if(isOwner) setIcon(em); }}
+                      style={{
+                        width:40,height:40,borderRadius:11,
+                        border:icon===em?'2px solid #818cf8':'2px solid transparent',
+                        background:icon===em?'rgba(129,140,248,0.2)':'rgba(255,255,255,0.04)',
+                        cursor:isOwner?'pointer':'default',
+                        fontSize:20,display:'flex',alignItems:'center',justifyContent:'center',
+                        transition:'all .15s',
+                        transform:icon===em?'scale(1.15)':'scale(1)',
+                        boxShadow:icon===em?'0 0 12px rgba(129,140,248,0.5)':'none',
+                      }}>
+                      {em}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* ── Owner-only: name, bio, save ── */}
+              {isOwner && (
+                <>
+                  <div>
+                    <label style={{ fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'0.1em',textTransform:'uppercase',display:'block',marginBottom:8 }}>Group Name</label>
+                    <input value={name} onChange={e=>setName(e.target.value)} style={modalInp} placeholder="Group name…"/>
                   </div>
-                </div>
-                <div>
-                  <label style={{ fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'0.1em',textTransform:'uppercase',display:'block',marginBottom:8 }}>Group Name</label>
-                  <input value={name} onChange={e=>setName(e.target.value)} style={modalInp} placeholder="Group name…"/>
-                </div>
-                <div>
-                  <label style={{ fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'0.1em',textTransform:'uppercase',display:'block',marginBottom:8 }}>Group Bio</label>
-                  <textarea value={bio} onChange={e=>setBio(e.target.value)} rows={3} maxLength={200} style={{ ...modalInp,resize:'none',lineHeight:1.6 }} placeholder="What's this group about?…"/>
-                  <div style={{ fontSize:11,color:'rgba(255,255,255,0.2)',textAlign:'right',marginTop:4 }}>{bio.length}/200</div>
-                </div>
-                {err && <p style={{ color:'#fca5a5',fontSize:13,margin:0 }}>⚠ {err}</p>}
-                <GradBtn onClick={save} disabled={loading} full>{loading ? 'Saving…' : '✦ Save Changes'}</GradBtn>
-              </>}
+                  <div>
+                    <label style={{ fontSize:11,fontWeight:700,color:'rgba(255,255,255,0.4)',letterSpacing:'0.1em',textTransform:'uppercase',display:'block',marginBottom:8 }}>Group Bio</label>
+                    <textarea value={bio} onChange={e=>setBio(e.target.value)} rows={3} maxLength={200} style={{ ...modalInp,resize:'none',lineHeight:1.6 }} placeholder="What's this group about?…"/>
+                    <div style={{ fontSize:11,color:'rgba(255,255,255,0.2)',textAlign:'right',marginTop:4 }}>{bio.length}/200</div>
+                  </div>
+                  {err && <p style={{ color:'#fca5a5',fontSize:13,margin:0 }}>⚠ {err}</p>}
+                  <GradBtn onClick={save} disabled={loading} full>{loading ? 'Saving…' : '✦ Save Changes'}</GradBtn>
+                </>
+              )}
+
+              {/* ── Non-owner: bio read-only ── */}
               {!isOwner && (
                 <div style={{ padding:'16px',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.07)',borderRadius:14 }}>
                   <div style={{ fontSize:13,color:'rgba(255,255,255,0.5)',lineHeight:1.7 }}>
@@ -530,7 +568,7 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
   const [isTyping, setIsTyping] = useState(false);
   const [dmList, setDmList] = useState([]);
   const [groupList, setGroupList] = useState([]);
-  const [modal, setModal] = useState(null); // 'newDM' | 'createGroup' | 'groupInfo' | 'dmInfo'
+  const [modal, setModal] = useState(null);
   const [groupInfoTarget, setGroupInfoTarget] = useState(null);
   const [dmInfoTarget, setDmInfoTarget] = useState(null);
   const [presenceMap, setPresenceMap] = useState({});
@@ -541,6 +579,42 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
   const bottomRef = useRef(null);
   const typingRef = useRef(null);
   const activeRoomRef = useRef(null);
+  const [usersMap, setUsersMap] = useState({});
+
+  // ── usersMap: fetch + real-time sync for ALL DM partners & group members ──
+  // This ensures avatars in message bubbles always show the latest profile photo
+  useEffect(() => {
+    const uids = new Set();
+    dmList.forEach(dm => uids.add(dm.uid));
+    groupList.forEach(g => (g.members || []).forEach(uid => uids.add(uid)));
+    if (!uids.size) return;
+
+    // Initial fetch
+    const fetchAll = async () => {
+      const map = {};
+      for (const uid of uids) {
+        try {
+          const snap = await getDoc(doc(db, 'users', uid));
+          if (snap.exists()) map[uid] = snap.data();
+        } catch (e) {
+          console.error('Error fetching user:', e);
+        }
+      }
+      setUsersMap(prev => ({ ...prev, ...map }));
+    };
+    fetchAll();
+
+    // Real-time listeners so profile photo updates propagate instantly
+    const unsubs = [...uids].map(uid =>
+      onSnapshot(doc(db, 'users', uid), snap => {
+        if (snap.exists()) {
+          setUsersMap(prev => ({ ...prev, [uid]: snap.data() }));
+        }
+      }, err => console.warn('usersMap listener err', err))
+    );
+
+    return () => unsubs.forEach(u => u());
+  }, [dmList, groupList]);
 
   useEffect(() => { activeRoomRef.current = activeRoom; }, [activeRoom]);
 
@@ -558,15 +632,45 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
   };
 
   // ── Profile sync ──
+  const refreshDMData = async (dmArray) => {
+    const updated = await Promise.all(
+      dmArray.map(async (dm) => {
+        try {
+          const snap = await getDoc(doc(db, 'users', dm.uid));
+          if (snap.exists()) {
+            const u = snap.data();
+            return {
+              ...dm,
+              name: u.handle || dm.name,
+              photo: u.photoURL || dm.photo,
+              avatarColor: u.avatarColor ?? dm.avatarColor,
+            };
+          }
+        } catch (e) {
+          console.log("DM refresh error:", e);
+        }
+        return dm;
+      })
+    );
+    return updated;
+  };
+
   useEffect(() => {
-    const unsub = onSnapshot(doc(db, 'users', firebaseUser.uid), snap => {
-      if (snap.exists()) {
-        const data = snap.data();
-        setUserProfile(p => ({ ...p, ...data }));
-        if (data.dms) setDmList(data.dms);
-        if (data.lastRead) setLastReadMap(data.lastRead);
-      }
-    }, err => console.error('Profile sync error:', err));
+    const unsub = onSnapshot(
+      doc(db, 'users', firebaseUser.uid),
+      async (snap) => {
+        if (snap.exists()) {
+          const data = snap.data();
+          setUserProfile(p => ({ ...p, ...data }));
+          if (data.dms) {
+            const refreshedDMs = await refreshDMData(data.dms);
+            setDmList(refreshedDMs);
+          }
+          if (data.lastRead) setLastReadMap(data.lastRead);
+        }
+      },
+      err => console.error('Profile sync error:', err)
+    );
     return unsub;
   }, [firebaseUser.uid]);
 
@@ -801,13 +905,11 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
   // ── Delete Group ──
   const deleteGroup = async (groupId) => {
     try {
-      // Delete all messages
       const path = `groups/${groupId}/messages`;
       const snap = await getDocs(collection(db, path));
       const batch = writeBatch(db);
       snap.docs.forEach(d => batch.delete(d.ref));
       await batch.commit();
-      // Delete group doc
       await deleteDoc(doc(db, 'groups', groupId));
     } catch(e) { console.error('Delete group failed:', e); }
     if (activeRoom?.id === groupId) setActiveRoom(null);
@@ -861,7 +963,13 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
           {isActive&&<div style={{ position:'absolute',inset:0,background:'linear-gradient(90deg,transparent,rgba(255,255,255,0.02),transparent)',backgroundSize:'200%',animation:'shimmer 3s linear infinite' }}/>}
           {hasUnread && <div style={{ position:'absolute',left:0,top:'20%',bottom:'20%',width:3,borderRadius:2,background:'linear-gradient(to bottom,#818cf8,#f472b6)',boxShadow:'0 0 8px #818cf8' }}/>}
           {isDM
-            ? <Avatar name={label} size={26} avatarColor={dm.avatarColor} photoURL={dm.photo} online={onlineHere}/>
+            ? <Avatar
+                name={label}
+                size={26}
+                avatarColor={usersMap[dm.uid]?.avatarColor ?? dm.avatarColor}
+                photoURL={usersMap[dm.uid]?.photoURL || dm.photo}
+                online={onlineHere}
+              />
             : isGroup
               ? <div style={{ width:28,height:28,borderRadius:9,background:'linear-gradient(135deg,rgba(129,140,248,0.25),rgba(244,114,182,0.15))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:groupObj?.icon?18:14,fontWeight:800,color:'#a5b4fc',flexShrink:0 }}>{groupObj?.icon||label[0]}</div>
               : <span style={{ color:isActive?'#818cf8':'rgba(255,255,255,0.25)',fontWeight:800,fontSize:16 }}>#</span>
@@ -953,7 +1061,7 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
         <div onClick={()=>setSidebarOpen(false)} style={{ position:'fixed',inset:0,background:'rgba(0,0,0,0.6)',backdropFilter:'blur(4px)',zIndex:99 }}/>
       )}
 
-      {/* Sidebar */}
+      {/* ── Sidebar ── */}
       <div style={{
         width:sidebarWidth, flexShrink:0,
         background:'rgba(10,10,25,0.95)',
@@ -985,7 +1093,7 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
                 <div>
                   <div style={{ fontWeight:800, fontSize:17, letterSpacing:'-0.5px', fontFamily:"'Syne',sans-serif", background:'linear-gradient(135deg,#e0e7ff,#a5b4fc,#fbcfe8)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', lineHeight:1.1 }}>NexChat</div>
                   <div style={{ fontSize:9, color:'rgba(255,255,255,.25)', letterSpacing:'0.14em', textTransform:'uppercase', marginTop:2 }}>
-                    {totalUnread > 0 ? <span style={{ color:'#a5b4fc' }}>● {totalUnread} unread</span> : 'V3.0 beta'}
+                    {totalUnread > 0 ? <span style={{ color:'#a5b4fc' }}>● {totalUnread} unread</span> : 'V4.0 beta'}
                   </div>
                 </div>
               </div>
@@ -1003,11 +1111,21 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
             {dmList.length===0&&<p style={{ fontSize:12,color:'rgba(255,255,255,.2)',padding:'2px 4px 10px',fontStyle:'italic' }}>Click + to start a DM</p>}
             {dmList.map(dm=>(
               <SItem
-                key={dm.id} label={dm.name}
-                isActive={activeRoom?.id===dm.id}
-                onClick={()=>setActiveRoom({type:'dm',id:dm.id,name:dm.name,uid:dm.uid})}
-                isDM dm={dm}
-                onInfo={()=>{ setDmInfoTarget(dm); setModal('dmInfo'); }}
+                key={dm.id}
+                label={usersMap[dm.uid]?.handle || dm.name}
+                isActive={activeRoom?.id === dm.id}
+                onClick={() => setActiveRoom({
+                  type: 'dm',
+                  id: dm.id,
+                  name: usersMap[dm.uid]?.handle || dm.name,
+                  uid: dm.uid
+                })}
+                isDM
+                dm={dm}
+                onInfo={() => {
+                  setDmInfoTarget(dm);
+                  setModal('dmInfo');
+                }}
               />
             ))}
 
@@ -1038,7 +1156,7 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
         </div>
       </div>
 
-      {/* Main */}
+      {/* ── Main ── */}
       <div style={{ flex:1,display:'flex',flexDirection:'column',overflow:'hidden',position:'relative',width:isMobile?'100%':'auto' }}>
         <div style={{ position:'relative',zIndex:1,display:'flex',flexDirection:'column',height:'100%' }}>
           {!activeRoom ? (
@@ -1090,7 +1208,19 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
                   }}
                   style={{ display:'flex',alignItems:'center',gap:isMobile?10:14,flex:1,minWidth:0,cursor:'pointer' }}>
                   {activeRoom.type==='dm'
-                    ? <Avatar name={activeRoom.name} size={isMobile?34:40} online={isOtherOnline}/>
+                    ? (() => {
+                        const dmPartner = dmList.find(d=>d.id===activeRoom.id);
+                        const livePartner = dmPartner ? usersMap[dmPartner.uid] : null;
+                        return (
+                          <Avatar
+                            name={activeRoom.name}
+                            size={isMobile?34:40}
+                            online={isOtherOnline}
+                            photoURL={livePartner?.photoURL || dmPartner?.photo}
+                            avatarColor={livePartner?.avatarColor ?? dmPartner?.avatarColor}
+                          />
+                        );
+                      })()
                     : <div style={{ width:isMobile?36:42,height:isMobile?36:42,borderRadius:14,background:'linear-gradient(135deg,rgba(129,140,248,0.2),rgba(244,114,182,0.15))',display:'flex',alignItems:'center',justifyContent:'center',fontSize:isMobile?18:22,flexShrink:0,border:'1px solid rgba(129,140,248,0.2)' }}>{activeRoom.icon || groupList.find(g=>g.id===activeRoom.id)?.icon || activeRoom.name[0]}</div>
                   }
                   <div style={{ minWidth:0 }}>
@@ -1130,7 +1260,18 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
                 {messages.map((msg,i)=>{
                   const prev=messages[i-1];
                   const prevSame=prev&&!prev.system&&prev.sender===msg.sender;
-                  return <Message key={msg.id} msg={msg} isOwn={msg.sender===firebaseUser.uid} prevSameUser={prevSame} onDelete={deleteMsg} currentUid={firebaseUser.uid} isMobile={isMobile}/>;
+                  return (
+                    <Message
+                      key={msg.id}
+                      msg={msg}
+                      isOwn={msg.sender===firebaseUser.uid}
+                      prevSameUser={prevSame}
+                      onDelete={deleteMsg}
+                      currentUid={firebaseUser.uid}
+                      isMobile={isMobile}
+                      usersMap={usersMap}
+                    />
+                  );
                 })}
                 <TypingDots users={activeTypingUsers}/>
                 <div ref={bottomRef}/>
