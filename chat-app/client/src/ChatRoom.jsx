@@ -53,7 +53,7 @@ function Avatar({ name='?', size=36, photoURL, avatarColor, online }) {
           : <div style={{ position:'absolute', inset:2, width:size, height:size, borderRadius:'50%', background:`linear-gradient(135deg,${a},${b})`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:size*0.38, fontWeight:800, color:'#fff', fontFamily:"'Syne',sans-serif" }}>{name[0].toUpperCase()}</div>
         }
       </div>
-      {online!=null && <div style={{ position:'absolute', bottom:2, right:2, width:10, height:10, borderRadius:'50%', background:online?'#10b981':'rgba(255,255,255,0.2)', border:'2px solid #0d0d1f', boxShadow:online?'0 0 6px #10b981':'none' }}/>}
+      {online!=null && <div style={{ position:'absolute', bottom:2, right:2, width:10, height:10, borderRadius:'50%', background:online?'#10b981':'#ef4444', border:'2px solid #0d0d1f', boxShadow:online?'0 0 6px #10b981':'0 0 6px #ef4444' }}/>}
     </div>
   );
 }
@@ -1093,7 +1093,7 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
                 <div>
                   <div style={{ fontWeight:800, fontSize:17, letterSpacing:'-0.5px', fontFamily:"'Syne',sans-serif", background:'linear-gradient(135deg,#e0e7ff,#a5b4fc,#fbcfe8)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', lineHeight:1.1 }}>NexChat</div>
                   <div style={{ fontSize:9, color:'rgba(255,255,255,.25)', letterSpacing:'0.14em', textTransform:'uppercase', marginTop:2 }}>
-                    {totalUnread > 0 ? <span style={{ color:'#a5b4fc' }}>● {totalUnread} unread</span> : 'V4.0 beta'}
+                    {totalUnread > 0 ? <span style={{ color:'#a5b4fc' }}>● {totalUnread} unread</span> : 'V3.0 beta'}
                   </div>
                 </div>
               </div>
