@@ -213,7 +213,7 @@ function GradBtn({ onClick,disabled,children,full,danger}) {
 }
 
 // ── Group Info Modal (full-featured) ──────────────────────────────────────────
-function GroupInfoModal({ group, currentUser, presenceMap, onClose, onUpdated, onDeleteGroup, onLeaveGroup }) {
+function GroupInfoModal({ group, currentUser, presenceMap, usersMap, onClose, onUpdated, onDeleteGroup, onLeaveGroup }) {
   const [tab, setTab] = useState('info');
   const [name, setName] = useState(group.name || '');
   const [bio, setBio] = useState(group.bio || '');
@@ -376,7 +376,13 @@ function GroupInfoModal({ group, currentUser, presenceMap, onClose, onUpdated, o
                   const isMe = uid === currentUser.uid;
                   return (
                     <div key={h} style={{ display:'flex',alignItems:'center',gap:12,padding:'10px 14px',background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.06)',borderRadius:13 }}>
-                      <Avatar name={h} size={34} online={isOnline}/>
+                      <Avatar
+                        name={h}
+                        size={34}
+                        online={isOnline}
+                        photoURL={usersMap?.[uid]?.photoURL || ''}
+                        avatarColor={usersMap?.[uid]?.avatarColor ?? undefined}
+                      />
                       <div style={{ flex:1,minWidth:0 }}>
                         <div style={{ fontSize:13,fontWeight:700,color:'#fff',fontFamily:"'Syne',sans-serif" }}>@{h}{isMe?' (you)':''}</div>
                         {isCreator && <div style={{ fontSize:10,color:'#fbbf24',fontWeight:700,letterSpacing:'0.08em' }}>👑 OWNER</div>}
@@ -1037,6 +1043,7 @@ export default function ChatRoom({ firebaseUser, userProfile: initProfile }) {
           group={groupInfoTarget}
           currentUser={{...userProfile,uid:firebaseUser.uid}}
           presenceMap={presenceMap}
+          usersMap={usersMap}
           onClose={()=>{setModal(null);setGroupInfoTarget(null);}}
           onUpdated={g=>{
             setGroupList(p=>p.map(x=>x.id===g.id?g:x));
